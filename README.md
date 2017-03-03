@@ -1,3 +1,5 @@
+Original work by: Danladi https://github.com/Danladi/HttpPwnly
+
 # HttpPwnly
 
 "Repeater" style XSS post-exploitation tool for mass browser control. Primarily a PoC to show why HttpOnly flag isn't a complete protection against session hijacking via XSS.
